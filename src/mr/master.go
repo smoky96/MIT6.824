@@ -5,6 +5,9 @@ import "net"
 import "os"
 import "net/rpc"
 import "net/http"
+import "sync"
+import "fmt"
+import "time"
 
 
 type Master struct {
