@@ -83,9 +83,9 @@ type Raft struct {
 	// state a Raft server must maintain.
 	state int32 // Raft state: Follower, Candidate, Leader (2A)
 
-	currentTerm int   // latest term server has seen (2A)
-	votedFor    int   // cnadidateId that received vote in current term (2A)
-	poll        int32 // count the votes (2A)
+	currentTerm int // latest term server has seen (2A)
+	votedFor    int // cnadidateId that received vote in current term (2A)
+	poll        int // count the votes (2A)
 
 	timer int64 // last time hear from leader (2A)
 }
@@ -229,17 +229,17 @@ func (rf *Raft) electAfterTimeout() {
 	timeout := rand.Int63n(700) + 300
 	curTime := time.Now().UnixNano() / 1e6
 
-	rf.mu.Lock()
-	if curTime-rf.timer > timeout {
+	if curTime-atomic.LoadInt64(&rf.timer) > timeout {
 		rf.election()
 	}
-	rf.mu.Unlock()
 }
 
-// call with lock
 func (rf *Raft) election() {
 
 	fmt.Printf("Server %d starting election\n", rf.me)
+
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
 
 	rf.state = Candidate
 
@@ -257,13 +257,13 @@ func (rf *Raft) election() {
 			continue
 		}
 
-		var reply RequestVoteReply
-		go rf.goSendRequestVote(i, &args, &reply)
+		go rf.goSendRequestVote(i, args)
 	}
 }
 
-func (rf *Raft) goSendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) {
-	if rf.sendRequestVote(server, args, reply) {
+func (rf *Raft) goSendRequestVote(server int, args RequestVoteArgs) {
+	var reply RequestVoteReply
+	if rf.sendRequestVote(server, &args, &reply) {
 		rf.mu.Lock()
 		if reply.Term > rf.currentTerm {
 			rf.currentTerm = reply.Term
@@ -272,9 +272,9 @@ func (rf *Raft) goSendRequestVote(server int, args *RequestVoteArgs, reply *Requ
 			return
 		}
 		if reply.VoteGranted {
-			atomic.AddInt32(&rf.poll, 1)
+			rf.poll++
 		}
-		if atomic.LoadInt32(&rf.poll) > int32(len(rf.peers)/2) && rf.state == Candidate {
+		if rf.poll > len(rf.peers)/2 && rf.state == Candidate {
 			rf.state = Leader
 			fmt.Printf("Server %d win the election\n", rf.me)
 		}
@@ -322,13 +322,13 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 func (rf *Raft) heartBeatAfterTimeout() {
 	timeout := 100 * time.Microsecond
 	time.Sleep(timeout)
-	rf.mu.Lock()
 	rf.heartBeat()
-	rf.mu.Unlock()
 }
 
-// call with lock
 func (rf *Raft) heartBeat() {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
 	var args AppendEntriesArgs
 	args.Term = rf.currentTerm
 
@@ -336,14 +336,14 @@ func (rf *Raft) heartBeat() {
 		if i == rf.me {
 			continue
 		}
-		var reply AppendEntriesReply
-		go rf.goSendAppendEntries(i, &args, &reply)
+		go rf.goSendAppendEntries(i, args)
 	}
 }
 
-func (rf *Raft) goSendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) {
+func (rf *Raft) goSendAppendEntries(server int, args AppendEntriesArgs) {
+	var reply AppendEntriesReply
 	if atomic.LoadInt32(&rf.state) == Leader {
-		rf.sendAppendEntries(server, args, reply)
+		rf.sendAppendEntries(server, &args, &reply)
 		rf.mu.Lock()
 		if reply.Term > rf.currentTerm {
 			rf.currentTerm = reply.Term
