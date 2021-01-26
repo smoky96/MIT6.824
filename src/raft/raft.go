@@ -274,9 +274,9 @@ func (rf *Raft) goSendRequestVote(server int, args RequestVoteArgs) {
 		if reply.VoteGranted {
 			rf.poll++
 		}
-		if rf.poll > len(rf.peers)/2 && rf.state == Candidate {
+		if rf.poll > len(rf.peers)/2 && rf.state == Candidate && rf.currentTerm == args.Term {
 			rf.state = Leader
-			fmt.Printf("Server %d win the election\n", rf.me)
+			fmt.Printf("Server %d win the election in term %d\n", rf.me, rf.currentTerm)
 		}
 		rf.mu.Unlock()
 	}
