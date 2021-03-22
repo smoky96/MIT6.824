@@ -255,7 +255,6 @@ func (rf *Raft) startElection() {
 
 	rf.convertTo(Candidate)
 	nVote := 1
-	rf.resetTimerElection()
 
 	DPrintf("[startElection] raft %d start election | current term: %d | current state: %d \n",
 		rf.me, rf.currentTerm, rf.state)
@@ -355,7 +354,12 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		rf.currentTerm = args.Term
 		DPrintf("[AppendEntries] raft %d update term | current term: %d | current state: %d | recieved term: %d\n",
 			rf.me, rf.currentTerm, rf.state, args.Term)
+	} else if (rf.state == Candidate) {
+		rf.state = Follower
+		DPrintf("[AppendEntries] raft %d update state | current term: %d | current state: %d | recieved term: %d\n",
+			rf.me, rf.currentTerm, rf.state, args.Term)
 	}
+
 	reply.Term = rf.currentTerm
 	reply.Success = true
 }
@@ -374,7 +378,7 @@ func (rf *Raft) braodcastHeartbeat() {
 		rf.mu.Unlock()
 		return
 	}
-	rf.lastResetHeartbeatTimer = time.Now().UnixNano()
+	rf.resetTimerHeartbeat()
 
 	rf.mu.Unlock()
 
@@ -433,15 +437,18 @@ func (rf *Raft) braodcastHeartbeat() {
 func (rf *Raft) convertTo(state int32) {
 	switch state {
 	case Follower:
+		// sofar, every time convert to follower comes with term change,
+		// which need to set votedFor to -1
 		rf.votedFor = -1
 		rf.state = Follower
 	case Candidate:
 		rf.state = Candidate
-		rf.votedFor = rf.me
 		rf.currentTerm++
+		rf.votedFor = rf.me
+		rf.resetTimerElection()
 	case Leader:
 		rf.state = Leader
-		rf.lastResetHeartbeatTimer = time.Now().UnixNano()
+		rf.resetTimerHeartbeat()
 	}
 }
 
@@ -485,6 +492,10 @@ func (rf *Raft) resetTimerElection() {
 	rand.Seed(time.Now().UnixNano())
 	rf.timeoutElection = rf.timeoutHeartbeat*5 + rand.Int63n(150)
 	rf.lastResetElectionTimer = time.Now().UnixNano()
+}
+
+func (rf *Raft) resetTimerHeartbeat() {
+	rf.lastResetHeartbeatTimer = time.Now().UnixNano()
 }
 
 func (rf *Raft) mainLoop() {
