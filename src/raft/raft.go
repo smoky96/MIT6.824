@@ -347,7 +347,7 @@ func (rf *Raft) startElection() {
 						}
 
 						rf.mu.Unlock()
-						rf.braodcastHeartbeat()
+						rf.broadcastHeartbeat()
 						rf.mu.Lock()
 					}
 				} else {
@@ -473,7 +473,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	return ok
 }
 
-func (rf *Raft) braodcastHeartbeat() {
+func (rf *Raft) broadcastHeartbeat() {
 	rf.mu.Lock()
 
 	if rf.state != Leader {
@@ -672,7 +672,7 @@ func (rf *Raft) mainLoop() {
 		case <-rf.timerElectionChan:
 			rf.startElection()
 		case <-rf.timerHeartbeatChan:
-			rf.braodcastHeartbeat()
+			rf.broadcastHeartbeat()
 		}
 	}
 }
